@@ -8,7 +8,7 @@
     "start": "node server/index.js",
     "build": "vite build",
     "test": "node --test tests/api.test.js",
-    "lint": "node --check server/index.js && node --check server/models/User.js && node --check server/models/Note.js"
+    "lint": "node --check server/index.js && node --check server/models/User.js && node --check server/models/Note.js && node --check \"api/[...path].js\""
   },
   "dependencies": {
     "@vitejs/plugin-react": "^4.3.4",

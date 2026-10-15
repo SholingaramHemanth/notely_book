@@ -18,6 +18,17 @@ Notely is a premium dark-mode personal notes workspace built with React/Vite, Ex
 
 For a production-like run, use `pnpm build`, set the variable in PowerShell with `$env:NODE_ENV='production'`, and then run `pnpm start`.
 
+## Deploying to Vercel
+
+The repository includes a Vercel Function at `api/[...path].js` for the Express API. Deploy the repository root with the default Vite build settings so Vercel serves `dist/` and routes `/api/*` requests to that function.
+
+In Vercel, add these Project Environment Variables for each environment you deploy:
+
+- `MONGO_URI`: a MongoDB Atlas connection string. Allow network access from Vercel in the Atlas network settings.
+- `JWT_SECRET`: a long, random secret used to sign login sessions.
+
+Redeploy after adding or changing environment variables. Check `/api/health` on the deployed domain; it should report `"database": true` before registering or signing in. Never put production credentials in `.env.example` or commit them to Git.
+
 ## Features
 
 The protected workspace supports registration, login/logout, JWT sessions, owned notes, create/view/edit/delete, multiple tags, search across title/content/tags, pinning, archive/restore, Trash/restore/permanent delete, sorting, grid/list view, responsive layout, live statistics, calendar, tag counts, activity, loading/error/empty states, and unsaved-editor protection.

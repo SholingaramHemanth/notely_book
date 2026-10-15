@@ -31,7 +31,8 @@ if (fs.existsSync(envFile)) {
 // Ensure defaults
 process.env.PORT = process.env.PORT || '3000';
 process.env.MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/notely';
-process.env.JWT_SECRET = process.env.JWT_SECRET || 'notely_ultra_secure_jwt_secret_token_key_2026_super_fast';
+const isProduction = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
+process.env.JWT_SECRET = process.env.JWT_SECRET || (isProduction ? '' : 'notely_local_development_secret');
 
 const User = require('./models/User');
 const Note = require('./models/Note');
@@ -41,6 +42,7 @@ const PORT = Number(process.env.PORT);
 const isPreview = Boolean(process.env.PREVIEW_ORIGIN);
 let dbReady = false;
 let dbError = null;
+let databaseConnection;
 
 const app = express();
 app.disable('x-powered-by');
@@ -63,9 +65,36 @@ function sendError(res, status, error, details) {
   return res.status(status).json({ ok: false, error, ...(details ? { details } : {}) });
 }
 
-function dbGuard(req, res, next) {
-  if (!dbReady) return sendError(res, 503, 'Database is not connected. Configure MONGO_URI and restart the server.', dbError);
+function authConfigGuard(req, res, next) {
+  if (!process.env.JWT_SECRET) return sendError(res, 503, 'JWT_SECRET is not configured for this deployment.');
   next();
+}
+
+function dbGuard(req, res, next) {
+  if (!dbReady) return sendError(res, 503, 'Database is not connected. Configure MONGO_URI and restart the application.', dbError);
+  next();
+}
+
+function connectDatabase() {
+  if (mongoose.connection.readyState === 1) {
+    dbReady = true;
+    dbError = null;
+    return Promise.resolve();
+  }
+  if (!databaseConnection) {
+    databaseConnection = mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 5000 })
+      .then(() => {
+        dbReady = true;
+        dbError = null;
+      })
+      .catch((error) => {
+        dbReady = false;
+        dbError = 'MongoDB connection failed: ' + error.message;
+        databaseConnection = null;
+        throw error;
+      });
+  }
+  return databaseConnection;
 }
 
 function normalizeTags(tags) {
@@ -130,7 +159,7 @@ function notesQuery(req) {
 app.get('/api/health', (req, res) => res.json({ ok: true, service: 'notely', database: dbReady, error: dbReady ? null : dbError }));
 
 // Registration
-app.post('/api/auth/register', dbGuard, async (req, res, next) => {
+app.post('/api/auth/register', authConfigGuard, dbGuard, async (req, res, next) => {
   try {
     const name = String(req.body.name || '').trim();
     const email = String(req.body.email || '').trim().toLowerCase();
@@ -150,7 +179,7 @@ app.post('/api/auth/register', dbGuard, async (req, res, next) => {
 });
 
 // Login
-app.post('/api/auth/login', dbGuard, async (req, res, next) => {
+app.post('/api/auth/login', authConfigGuard, dbGuard, async (req, res, next) => {
   try {
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');
@@ -164,7 +193,7 @@ app.post('/api/auth/login', dbGuard, async (req, res, next) => {
 });
 
 // One-click Demo Workspace access
-app.post('/api/auth/demo', dbGuard, async (req, res, next) => {
+app.post('/api/auth/demo', authConfigGuard, dbGuard, async (req, res, next) => {
   try {
     const demoEmail = 'demo@notely.app';
     let demoUser = await User.findOne({ email: demoEmail });
@@ -344,13 +373,10 @@ app.use((error, req, res, next) => {
 });
 
 async function start() {
-  const mongoUri = process.env.MONGO_URI;
   try {
-    await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 5000 });
-    dbReady = true;
-    console.log('[notely] MongoDB connected successfully at', mongoUri);
+    await connectDatabase();
+    console.log('[notely] MongoDB connected successfully');
   } catch (error) {
-    dbError = 'MongoDB connection failed: ' + error.message;
     console.error('[notely] MongoDB error:', error.message);
   }
 
@@ -372,4 +398,6 @@ async function start() {
   });
 }
 
-start();
+module.exports = { app, connectDatabase };
+
+if (require.main === module) start();
